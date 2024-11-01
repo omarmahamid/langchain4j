@@ -1,10 +1,13 @@
 package dev.langchain4j.service.fastreflection;
 
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.service.tool.ByteBuddyToolExecutor;
 import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
+import net.bytebuddy.ByteBuddy;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -25,21 +28,32 @@ public class LambdaMetafactoryBeanPropertyReaderTest {
         reader.executeMethod(tool, "save");
     }
 
+    @Test
+    void test2() throws NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
 
-    @AllArgsConstructor
-    @EqualsAndHashCode
-    static class Person {
+        PersonTool tool = new ByteBuddy()
+            .subclass(PersonTool.class)
+            .make()
+            .load(getClass().getClassLoader())
+            .getLoaded().getConstructor().newInstance();
+
+        tool.save();
+
+    }
+
+
+    public static class Person {
 
         String name;
         int age;
     }
 
 
-    private static class PersonTool {
+    public static class PersonTool {
 
         @Tool
         public Person save() {
-            return new Person("omar", 26);
+            return null;
         }
 
         @Tool
