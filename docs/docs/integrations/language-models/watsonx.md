@@ -4,7 +4,7 @@ sidebar_position: 22
 
 # watsonx.ai
 
-- [watsonx.ai API Reference](https://cloud.ibm.com/apidocs/watsonx-ai)
+- [watsonx.ai API Reference](https://cloud.ibm.com/apidocs/watsonx-ai#chat-completions)
 - [watsonx.ai Java SDK](https://github.com/IBM/watsonx-ai-java-sdk)
 
 ## Maven Dependency
@@ -13,7 +13,7 @@ sidebar_position: 22
 <dependency>
     <groupId>dev.langchain4j</groupId>
     <artifactId>langchain4j-watsonx</artifactId>
-    <version>1.10.0-beta18</version>
+    <version>1.17.2-beta27</version>
 </dependency>
 ```
 
@@ -21,7 +21,7 @@ sidebar_position: 22
 
 Watsonx.ai supports authentication via the `Authenticator` interface.
 
-This allows to use different authentication mechanisms depending on your deployment:
+This allows you to use different authentication mechanisms depending on your deployment:
 
 - **IBMCloudAuthenticator** – authenticates with **IBM Cloud** using an API key. This is the simplest approach and is used when you provide the `apiKey(...)` builder method.
 - **CP4DAuthenticator** – authenticates with **Cloud Pak for Data** deployments.
@@ -59,37 +59,56 @@ WatsonxChatModel.builder()
     .build();
 ```
 
-### Custom HttpClient
+### Custom HttpClient and SSL Configuration
+
+#### Using a custom HttpClient
 
 All services and authenticators support a custom `HttpClient` instance through the builder pattern. This is particularly useful for Cloud Pak for Data environments where you may need to configure custom TLS/SSL settings, proxy configuration, or other HTTP client properties.
-```java
-import java.net.http.HttpClient;
-import com.ibm.watsonx.ai.chat.ChatService;
-import com.ibm.watsonx.ai.core.auth.cp4d.CP4DAuthenticator;
 
+```java
 HttpClient httpClient = HttpClient.newBuilder()
     .sslContext(createCustomSSLContext())
+    .executor(ExecutorProvider.ioExecutor())
     .build();
 
-ChatService chatService = ChatService.builder()
+EmbeddingModel embeddingModel = WatsonxEmbeddingModel.builder()
     .baseUrl("https://my-instance-url")
-    .modelId("ibm/granite-4-h-small")
-    .projectId("my-project-id")
-    .httpClient(httpClient)
+    .modelName("ibm/granite-embedding-278m-multilingual")
+    .projectId("project-id")
+    .httpClient(httpClient) // Custom HttpClient
     .authenticator(
         CP4DAuthenticator.builder()
             .baseUrl("https://my-instance-url")
             .username("username")
             .apiKey("api-key")
-            .httpClient(httpClient)
+            .httpClient(httpClient) // Custom HttpClient
             .build()
     )
     .build();
-
-var response = chatService.chat("How are you?");
 ```
 
 > **Note:** When using a custom `HttpClient` with Cloud Pak for Data, make sure to set it on both the service builder and the authenticator builder to ensure consistent HTTP behavior across all requests.
+
+#### Disabling SSL verification
+
+If you only need to disable SSL certificate verification, you can use the `verifySsl(false)` option instead of providing a custom `HttpClient`:
+
+```java
+EmbeddingModel embeddingModel = WatsonxEmbeddingModel.builder()
+    .baseUrl("https://my-instance-url")
+    .modelName("ibm/granite-embedding-278m-multilingual")
+    .projectId("project-id")
+    .verifySsl(false) // Disable SSL verification
+    .authenticator(
+        CP4DAuthenticator.builder()
+            .baseUrl("https://my-instance-url")
+            .username("username")
+            .apiKey("api-key")
+            .verifySsl(false) // Disable SSL verification
+            .build()
+    )
+    .build();
+```
 
 ### How to create an IBM Cloud API Key
 
@@ -104,7 +123,7 @@ You can create an API key at [https://cloud.ibm.com/iam/apikeys](https://cloud.i
 
 ## WatsonxChatModel
 
-The `WatsonxChatModel` class allows you to create an instance of the `ChatModel` interface fully encapsulated within LangChain4j.  
+The `WatsonxChatModel` class allows you to create an instance of the `ChatModel` interface fully encapsulated within LangChain4j.
 To create an instance, you must specify the mandatory parameters:
 
 - `baseUrl(...)` – IBM Cloud endpoint URL (as `String`, `URI`, or `CloudRegion`);
@@ -112,9 +131,17 @@ To create an instance, you must specify the mandatory parameters:
 - `projectId(...)` – IBM Cloud Project ID (or use `spaceId(...)`);
 - `modelName(...)` – Foundation model ID for inference;
 
+Alternatively, you can use a **deployed model** by specifying:
+
+- `baseUrl(...)` – IBM Cloud endpoint URL (as `String`, `URI`, or `CloudRegion`);
+- `apiKey(...)` – IBM Cloud IAM API key;
+- `deploymentId(...)` – Deployment ID of the on-demand deployed model;
+
 > You can authenticate using either `.apiKey(...)` or a full `Authenticator` instance via `.authenticator(...)`.
 
 ### Example
+
+#### Using a foundation model from the catalog
 
 ```java
 import dev.langchain4j.model.chat.ChatModel;
@@ -134,15 +161,42 @@ String answer = chatModel.chat("Hello from watsonx.ai");
 System.out.println(answer);
 ```
 
+#### Using a deployed model (on-demand deployment)
+
+IBM watsonx.ai allows you to deploy foundation models on-demand on dedicated hardware for exclusive use by your organization. These deployed models can be accessed using their `deploymentId`.
+
+```java
+import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.watsonx.WatsonxChatModel;
+import com.ibm.watsonx.ai.CloudRegion;
+
+ChatModel chatModel = WatsonxChatModel.builder()
+    .baseUrl(CloudRegion.FRANKFURT)
+    .apiKey("your-api-key")
+    .deploymentId("your-deployment-id")
+    .temperature(0.7)
+    .maxOutputTokens(0)
+    .build();
+
+String answer = chatModel.chat("Hello from watsonx.ai");
+System.out.println(answer);
+```
+
+> **Note:** When using `deploymentId`, you don't need to specify `projectId`, `spaceId`, or `modelName` as the deployment already contains this information.
+
 > 🔗 [View available models](https://dataplatform.cloud.ibm.com/docs/content/wsj/analyze-data/fm-models.html?context=wx#ibm-provided)
+
+> 🔗 [Learn more about deploying models on-demand](https://dataplatform.cloud.ibm.com/docs/content/wsj/analyze-data/deploy-on-demand-overview.html?context=wx&audience=wdp)
 
 ## WatsonxStreamingChatModel
 
-The `WatsonxStreamingChatModel` provides streaming support for IBM watsonx.ai within LangChain4j. It’s useful when you want to process tokens as they are generated, ideal for real-time applications such as chat UIs or long text generation.
+The `WatsonxStreamingChatModel` provides streaming support for IBM watsonx.ai within LangChain4j. It's useful when you want to process tokens as they are generated, ideal for real-time applications such as chat UIs or long text generation.
 
 Streaming uses the same configuration structure and parameters as the non-streaming [`WatsonxChatModel`](#watsonxchatmodel). The main difference is that responses are delivered incrementally through a handler interface.
 
 ### Example
+
+#### Using a foundation model from the catalog
 
 ```java
 import dev.langchain4j.model.chat.StreamingChatModel;
@@ -178,7 +232,46 @@ model.chat("What is the capital of Italy?", new StreamingChatResponseHandler() {
 });
 ```
 
+#### Using a deployed model (on-demand deployment)
+
+```java
+import dev.langchain4j.model.chat.StreamingChatModel;
+import dev.langchain4j.model.chat.StreamingChatResponseHandler;
+import dev.langchain4j.model.chat.ChatResponse;
+import dev.langchain4j.model.watsonx.WatsonxStreamingChatModel;
+import com.ibm.watsonx.ai.CloudRegion;
+
+StreamingChatModel model = WatsonxStreamingChatModel.builder()
+    .baseUrl(CloudRegion.FRANKFURT)
+    .apiKey("your-api-key")
+    .deploymentId("your-deployment-id")
+    .maxOutputTokens(0)
+    .build();
+
+model.chat("What is the capital of Italy?", new StreamingChatResponseHandler() {
+
+    @Override
+    public void onPartialResponse(String partialResponse) {
+        System.out.println("Partial: " + partialResponse);
+    }
+
+    @Override
+    public void onCompleteResponse(ChatResponse completeResponse) {
+        System.out.println("Complete: " + completeResponse);
+    }
+
+    @Override
+    public void onError(Throwable error) {
+        error.printStackTrace();
+    }
+});
+```
+
+> **Note:** When using `deploymentId`, you don't need to specify `projectId`, `spaceId`, or `modelName` as the deployment already contains this information.
+
 > 🔗 [View available models](https://dataplatform.cloud.ibm.com/docs/content/wsj/analyze-data/fm-models.html?context=wx#ibm-provided)
+
+> 🔗 [Learn more about deploying models on-demand](https://dataplatform.cloud.ibm.com/docs/content/wsj/analyze-data/deploy-on-demand-overview.html?context=wx&audience=wdp)
 
 ## Tool Integration
 
@@ -341,61 +434,30 @@ model.chat(chatRequest, new StreamingChatResponseHandler() {
 > - Use `ExtractionTags` for models that embed reasoning and response in a single text string.  
 > - Use `ThinkingEffort` or `thinking(true)` for models that already separate reasoning and response automatically.  
 
-## WatsonxEmbeddingModel
+## WatsonxModelCatalog
 
-The `WatsonxEmbeddingModel` enables you to generate embeddings using IBM watsonx.ai and integrate them with LangChain4j's vector-based operations such as search, retrieval-augmented generation (RAG), and similarity comparison.
-
-It implements the LangChain4j `EmbeddingModel` interface.
-
-```java
-EmbeddingModel embeddingModel = WatsonxEmbeddingModel.builder()
-    .baseUrl(CloudRegion.FRANKFURT)
-    .apiKey("your-api-key")
-    .projectId("your-project-id")
-    .modelName("ibm/granite-embedding-278m-multilingual")
-    .build();
-
-System.out.println(embeddingModel.embed("Hello from watsonx.ai"));
-```
-> 🔗 [View available embedding model IDs](https://dataplatform.cloud.ibm.com/docs/content/wsj/analyze-data/fm-models-embed.html?context=wx&audience=wdp#embed)
-
-## WatsonxScoringModel
-
-The `WatsonxScoringModel` provides a LangChain4j implementation of a `ScoringModel` using IBM watsonx.ai models.
-
-It is particularly useful for ranking a list of documents (or text segments) based on their relevance to a user query.
+The `WatsonxModelCatalog` provides a programmatic way to discover and list all available foundation models on IBM watsonx.ai.
+It implements the LangChain4j `ModelCatalog` interface, allowing you to retrieve detailed information about each model.
 
 ### Example
 
 ```java
-ScoringModel scoringModel = WatsonxScoringModel.builder()
+import dev.langchain4j.model.catalog.ModelCatalog;
+import dev.langchain4j.model.catalog.ModelDescription;
+import dev.langchain4j.model.watsonx.WatsonxModelCatalog;
+import com.ibm.watsonx.ai.CloudRegion;
+
+ModelCatalog modelCatalog = WatsonxModelCatalog.builder()
     .baseUrl(CloudRegion.FRANKFURT)
-    .apiKey("your-api-key")
-    .projectId("your-project-id")
-    .modelName("cross-encoder/ms-marco-minilm-l-12-v2")
     .build();
 
-var scores = scoringModel.scoreAll(
-    List.of(
-        TextSegment.from("Example_1"),
-        TextSegment.from("Example_2")
-    ),
-    "Hello from watsonx.ai"
-);
-
-System.out.println(scores);
+var models = modelCatalog.listModels();
 ```
-
----
-
-> 🔗 [View available rerank model IDs](https://dataplatform.cloud.ibm.com/docs/content/wsj/analyze-data/fm-models-embed.html?context=wx&audience=wdp#rerank)
-
----
 
 ## WatsonxModerationModel
 
 The `WatsonxModerationModel` provides a LangChain4j implementation of the `ModerationModel` interface using IBM watsonx.ai.  
-It allows to automatically detect and flag sensitive, unsafe, or policy-violating content in text through **detectors**.
+It allows you to automatically detect and flag sensitive, unsafe, or policy-violating content in text through **detectors**.
 
 One or multiple **detectors** can be used to identify different types of content, such as:
 
@@ -435,6 +497,33 @@ Map<String, Object> metadata = response.metadata();
 System.out.println("Detection type: " + metadata.get("detection_type"));
 System.out.println("Score: " + metadata.get("score"));
 ```
+## Configuration via Environment Variables
+
+The LangChain4j watsonx integration allows customization of internal HTTP behavior through environment variables.  
+These settings are optional and sensible defaults are used when variables are not explicitly defined.
+
+### Retry Configuration
+
+HTTP requests are automatically retried in case of transient failures or expired authentication tokens.  
+Retry behavior can be customized using the following environment variables:
+
+| Environment Variable | Description | Default |
+|---------------------|-------------|---------|
+| `WATSONX_RETRY_TOKEN_EXPIRED_MAX_RETRIES` | Maximum number of retries when an authentication token has expired (HTTP 401 / 403) | `1` |
+| `WATSONX_RETRY_STATUS_CODES_MAX_RETRIES` | Maximum number of retries for transient HTTP status codes (`429`, `503`, `504`, `520`) | `10` |
+| `WATSONX_RETRY_STATUS_CODES_BACKOFF_ENABLED` | Enables exponential backoff for transient retries | `true` |
+| `WATSONX_RETRY_STATUS_CODES_INITIAL_INTERVAL_MS` | Initial retry interval in milliseconds (used as base for exponential backoff) | `20` |
+
+### HTTP IO Executor Configuration
+
+Streaming responses and HTTP response processing are handled by an internal IO executor.  
+By default, a single-threaded executor is used to ensure sequential processing of streaming events.
+
+This behavior can be customized using the following environment variable:
+
+| Environment Variable | Description | Default |
+|---------------------|-------------|---------|
+| `WATSONX_IO_EXECUTOR_THREADS` | Number of threads used for HTTP IO and SSE stream parsing | `1` |
 
 ## Quarkus
 
@@ -447,7 +536,5 @@ See more details [here](https://docs.quarkiverse.io/quarkus-langchain4j/dev/wats
 - [WatsonxStreamingChatModelTest](https://github.com/langchain4j/langchain4j-examples/blob/main/watsonx-ai-examples/src/main/java/WatsonxStreamingChatModelTest.java)
 - [WatsonxStreamingChatModelReasoningTest](https://github.com/langchain4j/langchain4j-examples/blob/main/watsonx-ai-examples/src/main/java/WatsonxStreamingChatModelTest.java)
 - [WatsonxToolsTest](https://github.com/langchain4j/langchain4j-examples/blob/main/watsonx-ai-examples/src/main/java/WatsonxToolsTest.java)
-- [WatsonxEmbeddingModelTest](https://github.com/langchain4j/langchain4j-examples/blob/main/watsonx-ai-examples/src/main/java/WatsonxEmbeddingModelTest.java)
-- [WatsonxScoringModelTest](https://github.com/langchain4j/langchain4j-examples/blob/main/watsonx-ai-examples/src/main/java/WatsonxScoringModelTest.java)
 - [WatsonxTokenCounterEstimatorTest](https://github.com/langchain4j/langchain4j-examples/blob/main/watsonx-ai-examples/src/main/java/WatsonxTokenCounterEstimatorTest.java)
 - [WatsonxModerationModelTest](https://github.com/langchain4j/langchain4j-examples/blob/main/watsonx-ai-examples/src/main/java/WatsonxModerationModelTest.java)

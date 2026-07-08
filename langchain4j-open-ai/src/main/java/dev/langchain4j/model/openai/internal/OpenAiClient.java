@@ -1,6 +1,8 @@
 package dev.langchain4j.model.openai.internal;
 
 import dev.langchain4j.http.client.HttpClientBuilder;
+import dev.langchain4j.model.openai.internal.audio.texttospeech.OpenAiTextToSpeechRequest;
+import dev.langchain4j.model.openai.internal.audio.texttospeech.OpenAiTextToSpeechResponse;
 import dev.langchain4j.model.openai.internal.audio.transcription.OpenAiAudioTranscriptionRequest;
 import dev.langchain4j.model.openai.internal.audio.transcription.OpenAiAudioTranscriptionResponse;
 import dev.langchain4j.model.openai.internal.chat.ChatCompletionRequest;
@@ -9,6 +11,7 @@ import dev.langchain4j.model.openai.internal.completion.CompletionRequest;
 import dev.langchain4j.model.openai.internal.completion.CompletionResponse;
 import dev.langchain4j.model.openai.internal.embedding.EmbeddingRequest;
 import dev.langchain4j.model.openai.internal.embedding.EmbeddingResponse;
+import dev.langchain4j.model.openai.internal.image.EditImageRequest;
 import dev.langchain4j.model.openai.internal.image.GenerateImagesRequest;
 import dev.langchain4j.model.openai.internal.image.GenerateImagesResponse;
 import dev.langchain4j.model.openai.internal.models.ModelsListResponse;
@@ -18,6 +21,7 @@ import dev.langchain4j.model.openai.internal.spi.OpenAiClientBuilderFactory;
 import dev.langchain4j.model.openai.internal.spi.ServiceHelper;
 import java.time.Duration;
 import java.util.Map;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 
 public abstract class OpenAiClient {
@@ -32,8 +36,16 @@ public abstract class OpenAiClient {
 
     public abstract SyncOrAsync<GenerateImagesResponse> imagesGeneration(GenerateImagesRequest request);
 
+    public SyncOrAsync<GenerateImagesResponse> imagesEdit(EditImageRequest request) {
+        throw new UnsupportedOperationException("Image editing is not supported by this client implementation");
+    }
+
     public SyncOrAsync<OpenAiAudioTranscriptionResponse> audioTranscription(OpenAiAudioTranscriptionRequest request) {
         throw new UnsupportedOperationException("Audio transcription is not supported by this client implementation");
+    }
+
+    public SyncOrAsync<OpenAiTextToSpeechResponse> textToSpeech(OpenAiTextToSpeechRequest request) {
+        throw new UnsupportedOperationException("Text-to-speech is not supported by this client implementation");
     }
 
     public SyncOrAsync<ModelsListResponse> listModels() {
@@ -63,7 +75,7 @@ public abstract class OpenAiClient {
         public boolean logRequests;
         public boolean logResponses;
         public Logger logger;
-        public Map<String, String> customHeaders;
+        public Supplier<Map<String, String>> customHeadersSupplier;
         public Map<String, String> customQueryParams;
 
         public abstract T build();
@@ -155,7 +167,20 @@ public abstract class OpenAiClient {
          * @return builder
          */
         public B customHeaders(Map<String, String> customHeaders) {
-            this.customHeaders = customHeaders;
+            this.customHeadersSupplier = () -> customHeaders;
+            return (B) this;
+        }
+
+        /**
+         * A supplier for custom headers to be added to each HTTP request.
+         * The supplier is called before each request, allowing dynamic header values.
+         * For example, this is useful for OAuth2 tokens that expire and need refreshing.
+         *
+         * @param customHeadersSupplier a supplier that provides a map of headers
+         * @return builder
+         */
+        public B customHeaders(Supplier<Map<String, String>> customHeadersSupplier) {
+            this.customHeadersSupplier = customHeadersSupplier;
             return (B) this;
         }
 

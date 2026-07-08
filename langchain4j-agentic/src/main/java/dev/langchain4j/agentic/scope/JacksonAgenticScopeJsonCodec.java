@@ -31,8 +31,7 @@ class JacksonAgenticScopeJsonCodec implements AgenticScopeJsonCodec {
 
         // Configure the ObjectMapper to add type information for users types
         mapper.activateDefaultTyping(
-                mapper.getPolymorphicTypeValidator(),
-                ObjectMapper.DefaultTyping.NON_FINAL
+                mapper.getPolymorphicTypeValidator()
         );
 
         return mapper;
@@ -52,7 +51,7 @@ class JacksonAgenticScopeJsonCodec implements AgenticScopeJsonCodec {
     @Override
     public String toJson(DefaultAgenticScope agenticScope) {
         try {
-            return MAPPER.writeValueAsString(agenticScope);
+            return MAPPER.writeValueAsString(agenticScope.serializableCopy());
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to serialize AgenticScope to JSON", e);
         }

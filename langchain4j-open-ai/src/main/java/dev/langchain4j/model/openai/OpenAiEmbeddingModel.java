@@ -8,6 +8,7 @@ import static dev.langchain4j.model.openai.internal.OpenAiUtils.DEFAULT_USER_AGE
 import static dev.langchain4j.model.openai.internal.OpenAiUtils.tokenUsageFrom;
 import static dev.langchain4j.spi.ServiceHelper.loadFactories;
 import static java.time.Duration.ofSeconds;
+import static java.util.Collections.unmodifiableMap;
 
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
@@ -21,9 +22,11 @@ import dev.langchain4j.model.output.Response;
 import dev.langchain4j.model.output.TokenUsage;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 
 /**
@@ -38,6 +41,7 @@ public class OpenAiEmbeddingModel extends DimensionAwareEmbeddingModel {
     private final Integer maxRetries;
     private final Integer maxSegmentsPerBatch;
     private final String encodingFormat;
+    private final Map<String, Object> customParameters;
 
     public OpenAiEmbeddingModel(OpenAiEmbeddingModelBuilder builder) {
 
@@ -53,7 +57,7 @@ public class OpenAiEmbeddingModel extends DimensionAwareEmbeddingModel {
                 .logResponses(getOrDefault(builder.logResponses, false))
                 .logger(builder.logger)
                 .userAgent(DEFAULT_USER_AGENT)
-                .customHeaders(builder.customHeaders)
+                .customHeaders(builder.customHeadersSupplier)
                 .customQueryParams(builder.customQueryParams)
                 .build();
         this.modelName = builder.modelName;
@@ -62,6 +66,9 @@ public class OpenAiEmbeddingModel extends DimensionAwareEmbeddingModel {
         this.maxRetries = getOrDefault(builder.maxRetries, 2);
         this.maxSegmentsPerBatch = getOrDefault(builder.maxSegmentsPerBatch, 2048);
         this.encodingFormat = builder.encodingFormat;
+        this.customParameters = builder.customParameters == null
+                ? null
+                : unmodifiableMap(new LinkedHashMap<>(builder.customParameters));
         ensureGreaterThanZero(this.maxSegmentsPerBatch, "maxSegmentsPerBatch");
     }
 
@@ -124,6 +131,7 @@ public class OpenAiEmbeddingModel extends DimensionAwareEmbeddingModel {
                 .dimensions(dimensions)
                 .user(user)
                 .encodingFormat(encodingFormat)
+                .customParameters(customParameters)
                 .build();
 
         EmbeddingResponse response =
@@ -160,9 +168,10 @@ public class OpenAiEmbeddingModel extends DimensionAwareEmbeddingModel {
         private Boolean logRequests;
         private Boolean logResponses;
         private Logger logger;
-        private Map<String, String> customHeaders;
+        private Supplier<Map<String, String>> customHeadersSupplier;
         private Map<String, String> customQueryParams;
         private String encodingFormat;
+        private Map<String, Object> customParameters;
 
         public OpenAiEmbeddingModelBuilder() {
             // This is public so it can be extended
@@ -242,8 +251,21 @@ public class OpenAiEmbeddingModel extends DimensionAwareEmbeddingModel {
             return this;
         }
 
+        /**
+         * Sets custom HTTP headers.
+         */
         public OpenAiEmbeddingModelBuilder customHeaders(Map<String, String> customHeaders) {
-            this.customHeaders = customHeaders;
+            this.customHeadersSupplier = () -> customHeaders;
+            return this;
+        }
+
+        /**
+         * Sets a supplier for custom HTTP headers.
+         * The supplier is called before each request, allowing dynamic header values.
+         * For example, this is useful for OAuth2 tokens that expire and need refreshing.
+         */
+        public OpenAiEmbeddingModelBuilder customHeaders(Supplier<Map<String, String>> customHeadersSupplier) {
+            this.customHeadersSupplier = customHeadersSupplier;
             return this;
         }
 
@@ -259,6 +281,14 @@ public class OpenAiEmbeddingModel extends DimensionAwareEmbeddingModel {
 
         public OpenAiEmbeddingModelBuilder encodingFormat(String encodingFormat) {
             this.encodingFormat = encodingFormat;
+            return this;
+        }
+
+        /**
+         * Sets custom HTTP body parameters.
+         */
+        public OpenAiEmbeddingModelBuilder customParameters(Map<String, Object> customParameters) {
+            this.customParameters = customParameters;
             return this;
         }
 
