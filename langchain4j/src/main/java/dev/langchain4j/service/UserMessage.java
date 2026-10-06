@@ -16,9 +16,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
  * <pre>
  * interface Assistant {
  *
- *     {@code @UserMessage}("""
- *         Say hello to {{name}}
- *         """)
+ *     {@code @UserMessage}("Say hello to {{name}}")
  *     String greet(@V("name") String name);
  * }
  * </pre>
@@ -26,9 +24,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
  * <pre>
  * interface Assistant {
  *
- *     {@code @SystemMessage}("""
- *         You are a {{characteristic}} assistant
- *         """)
+ *     {@code @SystemMessage}("You are a {{characteristic}} assistant")
  *     String chat(@UserMessage String userMessage, @V("characteristic") String characteristic);
  * }
  * </pre>
@@ -42,11 +38,12 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 public @interface UserMessage {
 
     /**
-     * Prompt template to be used as the user message.
-     * <p>
-     * Can be a single-line string or a Java text block (recommended for multi-line templates).
+     * Prompt template can be defined in one line or multiple lines.
+     * If the template is defined in multiple lines, the lines will be joined with a delimiter defined below.
      */
-    String value() default "";
+    String[] value() default "";
+
+    String delimiter() default "\n";
 
     /**
      * The resource from which to read the prompt template.

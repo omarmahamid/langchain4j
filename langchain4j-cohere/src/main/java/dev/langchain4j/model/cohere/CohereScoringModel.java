@@ -1,6 +1,8 @@
 package dev.langchain4j.model.cohere;
 
+import static dev.langchain4j.internal.CompletableFutureUtils.propagateCancellation;
 import static dev.langchain4j.internal.RetryUtils.withRetryMappingExceptions;
+import static dev.langchain4j.internal.RetryUtils.withRetryMappingExceptionsAsync;
 import static dev.langchain4j.internal.Utils.getOrDefault;
 import static dev.langchain4j.internal.ValidationUtils.ensureNotBlank;
 import static java.time.Duration.ofSeconds;
@@ -8,12 +10,16 @@ import static java.util.Comparator.comparingInt;
 import static java.util.stream.Collectors.toList;
 
 import dev.langchain4j.data.segment.TextSegment;
+import dev.langchain4j.http.client.HttpClientBuilder;
 import dev.langchain4j.model.output.Response;
 import dev.langchain4j.model.output.TokenUsage;
 import dev.langchain4j.model.scoring.ScoringModel;
+import dev.langchain4j.model.scoring.request.ScoringRequest;
+import dev.langchain4j.model.scoring.response.ScoringResponse;
 import java.net.Proxy;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import org.slf4j.Logger;
 
 /**
@@ -52,6 +58,7 @@ public class CohereScoringModel implements ScoringModel {
 
     public CohereScoringModel(CohereScoringModelBuilder builder) {
         this.client = CohereClient.builder()
+                .httpClientBuilder(builder.httpClientBuilder)
                 .baseUrl(getOrDefault(builder.baseUrl, DEFAULT_BASE_URL))
                 .apiKey(ensureNotBlank(builder.apiKey, "apiKey"))
                 .timeout(getOrDefault(builder.timeout, ofSeconds(60)))
@@ -97,7 +104,42 @@ public class CohereScoringModel implements ScoringModel {
                 scores, new TokenUsage(response.getMeta().getBilledUnits().getSearchUnits()));
     }
 
+    /**
+     * Genuinely non-blocking counterpart of {@link #scoreAll(List, String)}, used by the asynchronous and reactive
+     * RAG flow. The underlying HTTP call is dispatched asynchronously (no thread is parked while it is in flight),
+     * and cancelling the returned future aborts the in-flight call (best-effort).
+     * <p>
+     * Like {@link #scoreAll(List, String)}, a failed request is retried up to {@code maxRetries} times
+     * (retry-around-future, composing futures without parking a thread); a cancellation is never retried.
+     */
+    @Override
+    public CompletableFuture<ScoringResponse> doScoreAsync(ScoringRequest scoringRequest) {
+
+        RerankRequest request = RerankRequest.builder()
+                .model(getOrDefault(scoringRequest.modelName(), modelName))
+                .query(scoringRequest.query())
+                .documents(scoringRequest.documents())
+                .build();
+
+        CompletableFuture<RerankResponse> rerankFuture =
+                withRetryMappingExceptionsAsync(() -> client.rerankAsync(request), maxRetries);
+        CompletableFuture<ScoringResponse> result = rerankFuture.thenApply(response -> {
+            List<Double> scores = response.getResults().stream()
+                    .sorted(comparingInt(Result::getIndex))
+                    .map(Result::getRelevanceScore)
+                    .collect(toList());
+            return ScoringResponse.builder()
+                    .scores(scores)
+                    .modelName(getOrDefault(scoringRequest.modelName(), modelName))
+                    .tokenUsage(new TokenUsage(response.getMeta().getBilledUnits().getSearchUnits()))
+                    .build();
+        });
+        propagateCancellation(result, rerankFuture);
+        return result;
+    }
+
     public static class CohereScoringModelBuilder {
+        private HttpClientBuilder httpClientBuilder;
         private String baseUrl;
         private String apiKey;
         private String modelName;
@@ -109,6 +151,18 @@ public class CohereScoringModel implements ScoringModel {
         private Logger logger;
 
         CohereScoringModelBuilder() {}
+
+        /**
+         * Sets a custom HTTP client builder, allowing fine-grained control over the HTTP client
+         * configuration such as timeouts and proxy settings.
+         *
+         * @param httpClientBuilder the HTTP client builder
+         * @return {@code this}
+         */
+        public CohereScoringModelBuilder httpClientBuilder(HttpClientBuilder httpClientBuilder) {
+            this.httpClientBuilder = httpClientBuilder;
+            return this;
+        }
 
         public CohereScoringModelBuilder baseUrl(String baseUrl) {
             this.baseUrl = baseUrl;
@@ -135,6 +189,15 @@ public class CohereScoringModel implements ScoringModel {
             return this;
         }
 
+        /**
+         * @param proxy the proxy (no longer applied)
+         * @return {@code this}
+         * @deprecated Proxy configuration via {@code proxy(...)} is no longer supported since the migration to the
+         * langchain4j HttpClient abstraction. Passing a non-null proxy will cause an
+         * {@link UnsupportedOperationException} when the model is built. To configure a proxy, supply a custom
+         * {@link HttpClientBuilder} via {@link #httpClientBuilder(HttpClientBuilder)} instead.
+         */
+        @Deprecated
         public CohereScoringModelBuilder proxy(Proxy proxy) {
             this.proxy = proxy;
             return this;

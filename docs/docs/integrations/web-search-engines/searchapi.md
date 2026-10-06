@@ -15,14 +15,14 @@ Add the following dependencies to your project's `pom.xml`:
 <dependency>
   <groupId>dev.langchain4j</groupId>
   <artifactId>langchain4j-web-search-engine-searchapi</artifactId>
-  <version>1.17.2-beta27</version>
+  <version>1.21.0-beta31</version>
 </dependency>
 ```
 
 or project's `build.gradle`:
 
 ```groovy
-implementation 'dev.langchain4j:langchain4j-web-search-engine-searchapi:1.17.2-beta27'
+implementation 'dev.langchain4j:langchain4j-web-search-engine-searchapi:1.21.0-beta31'
 ```
 
 ### Example code:
@@ -40,13 +40,13 @@ import dev.langchain4j.web.search.searchapi.SearchApiWebSearchEngine;
 public class SearchApiTool {
 
     interface Assistant {
-        @SystemMessage("""
-                You are a web search support agent.
-                If there is any event that has not happened yet
-                You MUST create a web search request with user query and
-                use the web search tool to search the web for organic web results.
-                Include the source link in your final response.
-                """)
+        @SystemMessage({
+                "You are a web search support agent.",
+                "If there is any event that has not happened yet",
+                "You MUST create a web search request with user query and",
+                "use the web search tool to search the web for organic web results.",
+                "Include the source link in your final response."
+        })
         String answer(String userMessage);
     }
 
